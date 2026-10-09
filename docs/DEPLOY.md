@@ -17,6 +17,27 @@
 
 ## 1. Windows 小主机：一步步
 
+### 本地 HTTPS / 樱花映射
+
+1. 首次切换协议或续签 / 更换证书时，先在正在运行的服务器窗口按 `Ctrl+C` 停止服务（HTTP、HTTPS 均适用）。
+2. 双击 `scripts\start-https-windows.bat`。首次通过 Windows 生成一年有效的自签名证书 `certs/local.pfx`，无需管理员权限、OpenSSL 或额外 npm 依赖；再次运行会复用证书，有效期不足七天时重新生成。浏览器打开 `https://localhost:3000`，游戏联机自动使用 `wss://`。
+3. 樱花配置 **TCP 隧道**：本地 IP `127.0.0.1`、本地端口 `3000`（使用 `--port` 改端口时对应修改），关闭「自动 HTTPS」。朋友使用 `https://<樱花远程地址>:<远程端口>`，端口填写樱花分配的远程端口。操作依据：[樱花官方 HTTPS 说明](https://doc.natfrp.com/frpc/auto-https.html)。HTTPS 类型隧道需要绑定域名，按樱花对应教程配置；上述步骤针对 TCP 隧道。
+
+自签名证书提供加密，但浏览器会提示证书不受信任，公网地址与本地证书名称也可能不一致。确认是自己的服务器后可继续访问；若浏览器策略禁止继续，或希望朋友访问没有提示，请配置与公网域名匹配的受信任证书。证书包含私钥，`certs/` 位于静态网站目录之外，不要发给朋友或提交到仓库。
+
+生成本地证书后，原来的 `start-windows.bat`、PowerShell 启动脚本、`npm start` 都会自动使用 HTTPS。仅运行 `npm start` 不会自动续签；到期前先停止服务器，再使用 HTTPS 启动脚本即可更新。证书只在服务器启动时读取：如果续签时旧 HTTPS 服务还在运行，脚本会提示旧服务仍使用旧证书，需要停止旧窗口并重新启动才能生效。要使用自有 PEM 证书（路径相对项目根目录，也可写绝对路径）：
+
+```powershell
+$env:SP_HTTPS = '1'
+$env:SP_TLS_CERT = 'certs/fullchain.pem'
+$env:SP_TLS_KEY = 'certs/privkey.pem'
+npm start
+```
+
+也支持 `SP_TLS_PFX` 指定 PFX 文件、`SP_TLS_PASSPHRASE` 指定密码。指定证书错误时启动失败，不会回退到明文 HTTP。程序化调用 `startServer({ tls: { cert, key } })` 可传入 Node HTTPS 选项，`startServer({ tls: false })` 强制使用 HTTP。
+
+若改用樱花的「自动 HTTPS」或前置反向代理，由其处理证书，先停止服务器，在同一个 PowerShell 窗口设置 `$env:SP_HTTPS = '0'` 后运行 `npm start`，让本地服务使用 HTTP。原有 Nginx / Caddy / Windows 服务探活示例使用 HTTP 上游，采用这些示例时也应设 `SP_HTTPS=0`；Windows 服务可在 `scripts/service.env.cmd` 中增加 `set "SP_HTTPS=0"`。
+
 ### 1.1 安装与首次启动
 
 1. 安装 Node.js 22 LTS 和 Git（在 PowerShell 或「终端」里；用下面的整合包时不需要 Git）：
@@ -221,7 +242,7 @@ server {
 
 **HTTP/2**：客户端由数百个小脚本模块组成（0.2.0 起进入对局时约 340 个），隔着公网时建议让代理以 HTTP/2 提供页面：所有模块走同一条连接，远距离玩家首次进入对局明显更快。Caddy 默认就是 HTTP/2；Nginx 见上面的 `http2`。服务器本身只说 HTTP/1.1，局域网或本机游玩不受影响。
 
-https / wss 说明：页面通过 https 打开时客户端自动连接 `wss://同一域名/ws`；http 时用 `ws://`。服务器本身只提供 http，证书由代理 / 隧道负责。代理与服务器在同一台机器或内网时，`TRUST_PROXY=auto` 会信任它的 `X-Forwarded-For` / `X-Real-IP`；代理在公网另一台机器上时设 `TRUST_PROXY=1`（同时确保游戏端口只对代理开放）。
+https / wss 说明：页面通过 https 打开时客户端自动连接 `wss://同一域名/ws`；http 时用 `ws://`。服务器支持原生 HTTPS（见「本地 HTTPS / 樱花映射」）；采用本节 HTTP 上游示例时设 `SP_HTTPS=0`，由代理 / 隧道处理证书。代理与服务器在同一台机器或内网时，`TRUST_PROXY=auto` 会信任它的 `X-Forwarded-For` / `X-Real-IP`；代理在公网另一台机器上时设 `TRUST_PROXY=1`（同时确保游戏端口只对代理开放）。
 
 ## 3. Docker
 
